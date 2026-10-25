@@ -1,10 +1,17 @@
-import { Component, lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+
+import {
+  Component,
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import type { ReactNode } from "react";
 import HeroFallback from "./HeroFallback";
 import { useReducedMotion } from "../lib/useReducedMotion";
 
-// three.js + react-three-fiber live in their own chunk, so the page text and
-// CTAs render immediately and the 3D layer fades in once it has loaded.
 const Hero3D = lazy(() => import("./Hero3D"));
 
 function supportsWebGL(): boolean {
@@ -16,18 +23,20 @@ function supportsWebGL(): boolean {
   }
 }
 
-// If the scene throws while mounting, report it so the static fallback takes over.
 class SceneBoundary extends Component<
   { children: ReactNode; onError: () => void },
   { failed: boolean }
 > {
   state = { failed: false };
+
   static getDerivedStateFromError() {
     return { failed: true };
   }
+
   componentDidCatch() {
     this.props.onError();
   }
+
   render() {
     return this.state.failed ? null : this.props.children;
   }
@@ -41,22 +50,23 @@ export default function HeroBackdrop() {
   const [ready, setReady] = useState(false);
   const [visible, setVisible] = useState(true);
 
-  // Animated 3D only when it is safe and wanted; otherwise the static SVG version.
   const use3D = webgl && !reducedMotion && !failed;
 
   const onReady = useCallback(() => setReady(true), []);
   const onFail = useCallback(() => setFailed(true), []);
 
-  // If we leave 3D mode (e.g. reduced motion switched on), fade in again next time.
   useEffect(() => {
     if (!use3D) setReady(false);
   }, [use3D]);
 
-  // Stop rendering when the hero scrolls out of view to save battery/GPU.
   useEffect(() => {
     const el = ref.current;
     if (!el || typeof IntersectionObserver === "undefined") return;
-    const io = new IntersectionObserver(([entry]) => setVisible(entry.isIntersecting));
+
+    const io = new IntersectionObserver(([entry]) => {
+      setVisible(entry.isIntersecting);
+    });
+
     io.observe(el);
     return () => io.disconnect();
   }, []);
@@ -65,7 +75,7 @@ export default function HeroBackdrop() {
     <div
       ref={ref}
       aria-hidden="true"
-      className="pointer-events-none absolute inset-y-0 right-0 w-full opacity-40 sm:opacity-70 lg:w-3/5 lg:opacity-100"
+      className="pointer-events-none absolute inset-y-0 right-0 w-full opacity-25 sm:opacity-40 lg:w-[44%] lg:opacity-100"
     >
       {use3D ? (
         <div
@@ -75,7 +85,11 @@ export default function HeroBackdrop() {
         >
           <SceneBoundary onError={onFail}>
             <Suspense fallback={null}>
-              <Hero3D active={visible} onReady={onReady} onFail={onFail} />
+              <Hero3D
+                active={visible}
+                onReady={onReady}
+                onFail={onFail}
+              />
             </Suspense>
           </SceneBoundary>
         </div>
