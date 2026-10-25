@@ -6,7 +6,7 @@ export type Project = {
   built: string;
   stack: string[];
   pipeline?: string[];
-  result?: string; // only set when a real, verified number exists
+  result?: string;
   resultConfidence?: "VERIFIED" | "ESTIMATE";
   github?: string;
   demo?: string;
@@ -18,9 +18,9 @@ export const projects: Project[] = [
     slug: "wildlife-threat-detection",
     name: "Camouflage-Aware AI Wildlife Threat Detection",
     problem:
-      "Camouflaged animals near forest boundaries are hard to detect with standard object detection, creating risk for wildlife monitoring and human-wildlife conflict prevention.",
+      "Camouflaged animals near forest boundaries are difficult to detect with standard object detection, creating challenges for wildlife monitoring and human-wildlife conflict prevention.",
     built:
-      "A real-time surveillance pipeline that segments camouflaged subjects, detects and tracks them across frames, and estimates distance to flag threat-level events. 7th-semester main project.",
+      "A real-time computer vision pipeline designed to segment camouflaged subjects, detect and track them across video frames, estimate distance, and flag potential threat-level events. Developed as a 7th-semester main project.",
     stack: [
       "U-Net",
       "YOLOv8",
@@ -33,48 +33,50 @@ export const projects: Project[] = [
     pipeline: [
       "Input video",
       "Camouflage segmentation (U-Net)",
-      "YOLOv8 detection",
-      "DeepSORT tracking",
-      "Optical flow / movement analysis",
+      "YOLOv8 object detection",
+      "DeepSORT object tracking",
+      "Optical flow and movement analysis",
       "ZoeDepth distance estimation",
-      "Threat-level flagging",
+      "Threat-level event flagging",
     ],
     featured: true,
   },
+
   {
     slug: "ai-communication-copilot",
     name: "Enterprise AI Communication Copilot",
     problem:
-      "Enterprise email communication is repetitive and error-prone to automate safely — naive LLM wrappers hallucinate and have no observability.",
+      "Enterprise email communication is repetitive and error-prone to automate safely. Basic LLM integrations can produce unreliable outputs without context retrieval, guardrails, and observability.",
     built:
-      "A production-oriented copilot with a 6-stage prompt orchestration pipeline, retrieval-augmented generation, guardrails, self-evaluation, streaming responses, and observability for enterprise email automation.",
+      "A production-oriented AI communication copilot featuring a six-stage prompt orchestration pipeline, retrieval-augmented generation, guardrails, self-evaluation, streaming responses, and observability for enterprise email automation.",
     stack: [
       "Node.js",
       "Express",
       "Claude API",
       "RAG",
-      "Prompt orchestration",
+      "Prompt Orchestration",
       "Streaming",
     ],
     pipeline: [
       "User request",
       "API layer",
-      "Prompt orchestration (6 stages)",
+      "Six-stage prompt orchestration",
       "Context retrieval (RAG)",
       "Claude API",
-      "Guardrails & self-evaluation",
+      "Guardrails and self-evaluation",
       "Streamed response",
-      "Analytics / observability",
+      "Analytics and observability",
     ],
     github:
       "https://github.com/sachinpullakat/ai-communication-copilot",
     featured: true,
   },
+
   {
     slug: "hiring-assessment-platform",
     name: "Enterprise Hiring Assessment Platform",
     problem:
-      "Hiring teams need multi-tenant assessment tooling with real access control and auditability, not a single-tenant CRUD app.",
+      "Hiring teams need multi-tenant assessment tooling with robust access control and auditability, rather than a basic single-tenant CRUD application.",
     built:
       "A full-stack multi-tenant hiring assessment platform with JWT authentication, role-based access control, immutable question versioning, automated assessment generation, candidate evaluation, manual review, analytics, and PDF reporting.",
     stack: [
@@ -91,13 +93,14 @@ export const projects: Project[] = [
     github: "https://github.com/sachinpullakat/project",
     featured: true,
   },
+
   {
     slug: "churn-prediction",
     name: "ChurnIQ — Customer Churn Prediction & Retention Analytics",
     problem:
-      "Identifying customers at risk of churn from historical behavioral data is challenging, making it difficult for businesses to prioritize retention efforts.",
+      "Customer churn is difficult to anticipate from historical behavior. Businesses need to identify at-risk customers and understand how prediction thresholds affect retention decisions.",
     built:
-      "An interactive, deployed machine-learning dashboard featuring customer segmentation, churn probability predictions, risk analysis, and retention insights. Includes a Threshold Optimization Lab with ROC curves, precision-recall analysis, confusion matrices, and threshold-based model evaluation.",
+      "Developed and deployed an interactive churn analytics dashboard powered by a Random Forest classifier. Includes customer segmentation, probability-based risk predictions, retention insights, and a Threshold Optimization Lab with ROC curves, precision-recall analysis, confusion matrices, and threshold-based evaluation. Evaluated on a held-out test set of 1,407 records.",
     stack: [
       "Python",
       "Pandas",
@@ -111,14 +114,17 @@ export const projects: Project[] = [
       "Customer data",
       "Data preprocessing",
       "Feature engineering",
-      "Random Forest model",
+      "Random Forest classifier",
       "Churn probability prediction",
-      "Threshold optimization",
+      "Threshold evaluation",
       "Customer risk analysis",
       "Retention insights",
     ],
+    result: "78.5% accuracy · 81.2% ROC-AUC",
+    resultConfidence: "VERIFIED",
     github: "https://github.com/sachinpullakat/Churn-project",
-    demo: "https://churn-project-ef77w3gddbxyleixgerchn.streamlit.app/",
+    demo:
+      "https://churn-project-ef77w3gddbxyleixgerchn.streamlit.app/",
     featured: true,
   },
 ];
