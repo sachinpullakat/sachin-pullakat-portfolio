@@ -6,7 +6,8 @@ export default function ProjectCard({ project }: { project: Project }) {
 
   return (
     <article
-      className={`rounded-lg border border-graphite-700 bg-graphite-900/60 p-6 transition-colors ${
+      id={`project-${project.slug}`}
+      className={`scroll-mt-24 rounded-lg border border-graphite-700 bg-graphite-900/60 p-6 transition-colors ${
         project.featured ? "sm:col-span-2" : ""
       }`}
     >

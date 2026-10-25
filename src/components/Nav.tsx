@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { profile } from "../data/profile";
+import { shortcutLabel } from "../lib/commands";
+import { usePalette } from "../lib/palette";
 
 const links = [
   { href: "#about", label: "About" },
@@ -12,6 +14,8 @@ const links = [
 export default function Nav() {
   const [active, setActive] = useState<string>("");
   const [menuOpen, setMenuOpen] = useState(false);
+  const { show } = usePalette();
+  const shortcut = shortcutLabel();
 
   useEffect(() => {
     const sections = links
@@ -54,6 +58,23 @@ export default function Nav() {
           ))}
         </ul>
         <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={show}
+            aria-haspopup="dialog"
+            aria-keyshortcuts={shortcut === "⌘K" ? "Meta+K" : "Control+K"}
+            aria-label="Open command palette"
+            className="focus-ring flex items-center gap-2 rounded border border-graphite-600 p-2 text-graphite-200 transition-colors hover:border-signal hover:text-signal-bright sm:px-3 sm:py-1.5"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <circle cx="7" cy="7" r="4.75" stroke="currentColor" strokeWidth="1.5" />
+              <path d="M10.5 10.5L14 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+            <span className="hidden font-body text-sm sm:inline">Search</span>
+            <kbd className="hidden rounded border border-graphite-600 bg-graphite-800 px-1.5 py-0.5 font-mono text-[11px] text-graphite-400 md:inline">
+              {shortcut}
+            </kbd>
+          </button>
           <a
             href={profile.resumePath}
             className="focus-ring hidden rounded border border-graphite-600 px-3 py-1.5 font-body text-sm text-graphite-50 transition-colors hover:border-signal hover:text-signal-bright sm:inline-block"

@@ -1,4 +1,5 @@
 import { profile } from "../data/profile";
+import HeroBackdrop from "./HeroBackdrop";
 
 // Visual motif: corner brackets echo an object-detection bounding box —
 // a deliberate nod to the CV subject matter (YOLO/DeepSORT work), not decoration.
@@ -14,7 +15,8 @@ function Bracket({ className }: { className: string }) {
 export default function Hero() {
   return (
     <section id="top" className="relative overflow-hidden px-6 pb-20 pt-16 sm:pt-24">
-      <div className="mx-auto max-w-5xl">
+      <HeroBackdrop />
+      <div className="relative z-10 mx-auto max-w-5xl">
         <div className="relative inline-block px-8 py-8 sm:px-14 sm:py-12">
           <Bracket className="left-0 top-0 border-l-2 border-t-2" />
           <Bracket className="right-0 top-0 border-r-2 border-t-2" />
