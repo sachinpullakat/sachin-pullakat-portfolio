@@ -9,23 +9,28 @@ import Education from "./components/Education";
 import Achievements from "./components/Achievements";
 import Contact from "./components/Contact";
 import Footer from "./components/Footer";
+import CommandPalette from "./components/CommandPalette";
+import { PaletteProvider } from "./lib/palette";
 
 export default function App() {
   return (
-    <div className="min-h-screen bg-graphite-950 font-body text-graphite-50">
-      <Nav />
-      <main>
-        <Hero />
-        <Stats />
-        <About />
-        <Projects />
-        <Experience />
-        <Skills />
-        <Education />
-        <Achievements />
-        <Contact />
-      </main>
-      <Footer />
-    </div>
+    <PaletteProvider>
+      <div className="min-h-screen bg-graphite-950 font-body text-graphite-50">
+        <Nav />
+        <main>
+          <Hero />
+          <Stats />
+          <About />
+          <Projects />
+          <Experience />
+          <Skills />
+          <Education />
+          <Achievements />
+          <Contact />
+        </main>
+        <Footer />
+      </div>
+      <CommandPalette />
+    </PaletteProvider>
   );
 }
