@@ -1,0 +1,488 @@
+From 19475378184ff47f4e64111d2cfb892aa5ede4f1 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 25 Oct 2026 16:59:09 +0000
+Subject: [PATCH 2/3] Stage 1: polish 3D hero and add static fallback
+
+- Hero3D: shader-based key light + rim from per-point normals, intro
+  transition, frame-rate-independent pointer damping, subtle camera
+  parallax, delta clamping after pauses, context-loss handling, default
+  powerPreference (no discrete-GPU wake-up)
+- HeroBackdrop: fade-in once the GL context exists; swaps to static
+  fallback on no WebGL / context loss / scene error / reduced motion
+- HeroFallback: deterministic SVG of the same point cloud + brackets
+- useReducedMotion: live prefers-reduced-motion hook
+- Fix smoothstep edge order (undefined per GLSL spec when edge0 > edge1)
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01XTfPeacZ8EpFYeprPmAcwM
+---
+ src/components/Hero3D.tsx       | 110 ++++++++++++++++++++++++++------
+ src/components/HeroBackdrop.tsx |  54 +++++++++++-----
+ src/components/HeroFallback.tsx |  85 ++++++++++++++++++++++++
+ src/lib/useReducedMotion.ts     |  20 ++++++
+ 4 files changed, 236 insertions(+), 33 deletions(-)
+ create mode 100644 src/components/HeroFallback.tsx
+ create mode 100644 src/lib/useReducedMotion.ts
+
+diff --git a/src/components/Hero3D.tsx b/src/components/Hero3D.tsx
+index 4f57fe8..56e6d40 100644
+--- a/src/components/Hero3D.tsx
++++ b/src/components/Hero3D.tsx
+@@ -1,4 +1,5 @@
+ import { useEffect, useMemo, useRef } from "react";
++import type { MutableRefObject } from "react";
+ import { Canvas, useFrame } from "@react-three/fiber";
+ import * as THREE from "three";
+ 
+@@ -6,6 +7,10 @@ import * as THREE from "three";
+ // plane sweeping through it. It is the 3D version of the corner-bracket motif
+ // in Hero.tsx (object-detection box), so the 3D reads as the CV subject matter
+ // rather than decoration.
++//
++// "Lighting" is done in the point shader (a point cloud has no surface to light):
++// each point carries its source surface normal, which gives a soft key light
++// from the upper left, a rim term on silhouette edges, and depth fade.
+ 
+ // Raw sRGB floats for the shader (ShaderMaterial skips colour-space conversion).
+ const BASE = new THREE.Vector3(0x3e / 255, 0x5f / 255, 0xa3 / 255); // signal-dim
+@@ -15,12 +20,18 @@ const VERTEX = /* glsl */ `
+   uniform float uTime;
+   uniform float uScan;
+   uniform float uPixelRatio;
++  uniform float uIntro;
+   attribute float aSeed;
+   varying float vGlow;
+   varying float vDepth;
++  varying float vLight;
++  varying float vRim;
++
++  // Normalised key-light direction (upper left, towards the viewer), precomputed.
++  const vec3 KEY_DIR = vec3(-0.4504, 0.6006, 0.6606);
+ 
+   void main() {
+-    vec3 p = position;
++    vec3 p = position * mix(1.14, 1.0, uIntro);
+     p += 0.015 * vec3(
+       sin(uTime * 1.3 + aSeed * 40.0),
+       cos(uTime * 1.1 + aSeed * 31.0),
+@@ -29,12 +40,17 @@ const VERTEX = /* glsl */ `
+     vec4 mv = modelViewMatrix * vec4(p, 1.0);
+     gl_Position = projectionMatrix * mv;
+ 
++    // Surface normal in view space: soft wrap key light + silhouette rim.
++    vec3 vn = normalize(normalMatrix * normal);
++    vLight = mix(0.45, 1.0, clamp(dot(vn, KEY_DIR) * 0.5 + 0.5, 0.0, 1.0));
++    vRim = pow(1.0 - clamp(abs(vn.z), 0.0, 1.0), 2.5);
++
+     float d = abs(p.y - uScan);
+-    vGlow = smoothstep(0.35, 0.0, d);
++    vGlow = 1.0 - smoothstep(0.0, 0.35, d);
+     vGlow = clamp(vGlow + 0.12 * sin(uTime * 2.0 + aSeed * 50.0), 0.0, 1.0);
+     vDepth = clamp((-mv.z - 4.5) / 4.0, 0.0, 1.0);
+ 
+-    float size = (2.2 + 3.0 * vGlow) * uPixelRatio;
++    float size = (2.1 + 3.0 * vGlow + 1.0 * vRim) * uPixelRatio;
+     gl_PointSize = size * (7.0 / -mv.z);
+   }
+ `;
+@@ -42,15 +58,19 @@ const VERTEX = /* glsl */ `
+ const FRAGMENT = /* glsl */ `
+   uniform vec3 uBase;
+   uniform vec3 uBright;
++  uniform float uIntro;
+   varying float vGlow;
+   varying float vDepth;
++  varying float vLight;
++  varying float vRim;
+ 
+   void main() {
+     float r = length(gl_PointCoord - 0.5);
+     if (r > 0.5) discard;
+-    float soft = smoothstep(0.5, 0.15, r);
+-    vec3 col = mix(uBase, uBright, vGlow);
+-    float alpha = soft * (0.95 - 0.5 * vDepth);
++    float soft = 1.0 - smoothstep(0.15, 0.5, r);
++    float lift = clamp(vGlow + 0.5 * vRim, 0.0, 1.0);
++    vec3 col = mix(uBase * vLight, uBright, lift);
++    float alpha = soft * (0.95 - 0.5 * vDepth) * uIntro;
+     gl_FragColor = vec4(col, alpha);
+   }
+ `;
+@@ -58,8 +78,10 @@ const FRAGMENT = /* glsl */ `
+ function buildPointCloud(density: number) {
+   const knot = new THREE.TorusKnotGeometry(1.05, 0.34, 360, 24);
+   const src = knot.getAttribute("position");
++  const srcNormal = knot.getAttribute("normal");
+   const count = Math.floor(src.count / density);
+   const positions = new Float32Array(count * 3);
++  const normals = new Float32Array(count * 3);
+   const seeds = new Float32Array(count);
+ 
+   for (let i = 0; i < count; i++) {
+@@ -68,12 +90,16 @@ function buildPointCloud(density: number) {
+     positions[i * 3] = src.getX(j) + (Math.random() - 0.5) * 0.04;
+     positions[i * 3 + 1] = src.getY(j) + (Math.random() - 0.5) * 0.04;
+     positions[i * 3 + 2] = src.getZ(j) + (Math.random() - 0.5) * 0.04;
++    normals[i * 3] = srcNormal.getX(j);
++    normals[i * 3 + 1] = srcNormal.getY(j);
++    normals[i * 3 + 2] = srcNormal.getZ(j);
+     seeds[i] = Math.random();
+   }
+   knot.dispose();
+ 
+   const geometry = new THREE.BufferGeometry();
+   geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
++  geometry.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
+   geometry.setAttribute("aSeed", new THREE.BufferAttribute(seeds, 1));
+   geometry.computeBoundingBox();
+ 
+@@ -86,6 +112,7 @@ function buildPointCloud(density: number) {
+       uTime: { value: 0 },
+       uScan: { value: 0 },
+       uPixelRatio: { value: 1 },
++      uIntro: { value: 0 },
+       uBase: { value: BASE },
+       uBright: { value: BRIGHT },
+     },
+@@ -144,8 +171,12 @@ function buildScanRing(min: THREE.Vector3, max: THREE.Vector3) {
+ 
+ type Pointer = { x: number; y: number };
+ 
+-function Scene({ pointer }: { pointer: React.MutableRefObject<Pointer> }) {
++const easeOutCubic = (v: number) => 1 - Math.pow(1 - v, 3);
++
++function Scene({ pointer }: { pointer: MutableRefObject<Pointer> }) {
+   const group = useRef<THREE.Group>(null);
++  // Smoothed copy of the pointer, so camera and rotation never jump.
++  const smooth = useRef<Pointer>({ x: 0, y: 0 });
+ 
+   const parts = useMemo(() => {
+     const isSmall = typeof window !== "undefined" && window.innerWidth < 640;
+@@ -167,13 +198,20 @@ function Scene({ pointer }: { pointer: React.MutableRefObject<Pointer> }) {
+     };
+   }, [parts]);
+ 
+-  useFrame((state, delta) => {
++  useFrame((state, rawDelta) => {
+     const g = group.current;
+     if (!g) return;
++    // After a paused period (tab hidden, off-screen) the first delta is huge.
++    const delta = Math.min(rawDelta, 0.1);
+     const t = state.clock.elapsedTime;
+     const { box } = parts.cloud;
+     const u = parts.cloud.material.uniforms;
+ 
++    // Intro: points resolve in over ~1.6s after a short beat.
++    const intro = easeOutCubic(THREE.MathUtils.clamp((t - 0.15) / 1.6, 0, 1));
++    u.uIntro.value = intro;
++    g.scale.setScalar(0.94 + 0.06 * intro);
++
+     // Scan sweeps bottom -> top, then restarts.
+     const phase = (t * 0.16) % 1;
+     const y = box.min.y + (box.max.y - box.min.y) * phase;
+@@ -182,15 +220,24 @@ function Scene({ pointer }: { pointer: React.MutableRefObject<Pointer> }) {
+     u.uPixelRatio.value = state.gl.getPixelRatio();
+     parts.ring.position.y = y;
+     (parts.ring.material as THREE.LineBasicMaterial).opacity =
+-      0.7 * Math.sin(Math.PI * phase);
++      0.7 * Math.sin(Math.PI * phase) * intro;
++    (parts.brackets.object.material as THREE.LineBasicMaterial).opacity = 0.9 * intro;
++
++    // Frame-rate-independent damping toward the pointer.
++    const s = smooth.current;
++    s.x = THREE.MathUtils.damp(s.x, pointer.current.x, 4, delta);
++    s.y = THREE.MathUtils.damp(s.y, pointer.current.y, 4, delta);
+ 
+-    // Slow spin + cursor parallax + a little scroll-driven tilt (the "3D scroll" feel).
++    // Slow spin + pointer parallax + a little scroll-driven tilt.
+     const scrollTilt = Math.min(window.scrollY / 900, 1) * 0.6;
+-    const ease = 1 - Math.pow(0.001, delta);
+-    const targetY = t * 0.22 + pointer.current.x * 0.5;
+-    const targetX = -pointer.current.y * 0.35 + scrollTilt;
+-    g.rotation.y += (targetY - g.rotation.y) * ease;
+-    g.rotation.x += (targetX - g.rotation.x) * ease;
++    g.rotation.y = THREE.MathUtils.damp(g.rotation.y, t * 0.22 + s.x * 0.5, 3.5, delta);
++    g.rotation.x = THREE.MathUtils.damp(g.rotation.x, -s.y * 0.35 + scrollTilt, 3.5, delta);
++
++    // Tiny camera drift opposite the pointer gives parallax depth.
++    const cam = state.camera;
++    cam.position.x = THREE.MathUtils.damp(cam.position.x, s.x * 0.25, 2.5, delta);
++    cam.position.y = THREE.MathUtils.damp(cam.position.y, -s.y * 0.15, 2.5, delta);
++    cam.lookAt(0, 0, 0);
+   });
+ 
+   return (
+@@ -202,7 +249,16 @@ function Scene({ pointer }: { pointer: React.MutableRefObject<Pointer> }) {
+   );
+ }
+ 
+-export default function Hero3D({ active }: { active: boolean }) {
++type Hero3DProps = {
++  /** false pauses the render loop (hero scrolled out of view). */
++  active: boolean;
++  /** Called once the WebGL context exists, so the parent can fade the canvas in. */
++  onReady: () => void;
++  /** Called if the WebGL context is lost, so the parent can swap in the static fallback. */
++  onFail: () => void;
++};
++
++export default function Hero3D({ active, onReady, onFail }: Hero3DProps) {
+   const pointer = useRef<Pointer>({ x: 0, y: 0 });
+ 
+   useEffect(() => {
+@@ -210,8 +266,18 @@ export default function Hero3D({ active }: { active: boolean }) {
+       pointer.current.x = (e.clientX / window.innerWidth) * 2 - 1;
+       pointer.current.y = (e.clientY / window.innerHeight) * 2 - 1;
+     };
++    const recentre = () => {
++      pointer.current.x = 0;
++      pointer.current.y = 0;
++    };
+     window.addEventListener("pointermove", onMove, { passive: true });
+-    return () => window.removeEventListener("pointermove", onMove);
++    document.documentElement.addEventListener("pointerleave", recentre);
++    window.addEventListener("blur", recentre);
++    return () => {
++      window.removeEventListener("pointermove", onMove);
++      document.documentElement.removeEventListener("pointerleave", recentre);
++      window.removeEventListener("blur", recentre);
++    };
+   }, []);
+ 
+   return (
+@@ -219,8 +285,16 @@ export default function Hero3D({ active }: { active: boolean }) {
+       frameloop={active ? "always" : "never"}
+       dpr={[1, 1.75]}
+       camera={{ position: [0, 0, 6.5], fov: 40 }}
+-      gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
++      // "default" (not "high-performance") so dual-GPU laptops don't wake the discrete GPU for a hero.
++      gl={{ antialias: true, alpha: true, powerPreference: "default" }}
+       style={{ background: "transparent" }}
++      onCreated={({ gl }) => {
++        gl.domElement.addEventListener("webglcontextlost", (e) => {
++          e.preventDefault();
++          onFail();
++        });
++        onReady();
++      }}
+     >
+       <Scene pointer={pointer} />
+     </Canvas>
+diff --git a/src/components/HeroBackdrop.tsx b/src/components/HeroBackdrop.tsx
+index 3912b81..af9cf31 100644
+--- a/src/components/HeroBackdrop.tsx
++++ b/src/components/HeroBackdrop.tsx
+@@ -1,5 +1,7 @@
+-import { Component, lazy, Suspense, useEffect, useRef, useState } from "react";
++import { Component, lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+ import type { ReactNode } from "react";
++import HeroFallback from "./HeroFallback";
++import { useReducedMotion } from "../lib/useReducedMotion";
+ 
+ // three.js + react-three-fiber live in their own chunk, so the page text and
+ // CTAs render immediately and the 3D layer fades in once it has loaded.
+@@ -14,12 +16,18 @@ function supportsWebGL(): boolean {
+   }
+ }
+ 
+-// If WebGL context creation or the scene throws, the hero silently stays 2D.
+-class SceneBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
++// If the scene throws while mounting, report it so the static fallback takes over.
++class SceneBoundary extends Component<
++  { children: ReactNode; onError: () => void },
++  { failed: boolean }
++> {
+   state = { failed: false };
+   static getDerivedStateFromError() {
+     return { failed: true };
+   }
++  componentDidCatch() {
++    this.props.onError();
++  }
+   render() {
+     return this.state.failed ? null : this.props.children;
+   }
+@@ -27,14 +35,22 @@ class SceneBoundary extends Component<{ children: ReactNode }, { failed: boolean
+ 
+ export default function HeroBackdrop() {
+   const ref = useRef<HTMLDivElement>(null);
+-  const [enabled, setEnabled] = useState(false);
++  const reducedMotion = useReducedMotion();
++  const [webgl] = useState(supportsWebGL);
++  const [failed, setFailed] = useState(false);
++  const [ready, setReady] = useState(false);
+   const [visible, setVisible] = useState(true);
+ 
+-  // Respect reduced motion and devices without WebGL: no 3D layer at all.
++  // Animated 3D only when it is safe and wanted; otherwise the static SVG version.
++  const use3D = webgl && !reducedMotion && !failed;
++
++  const onReady = useCallback(() => setReady(true), []);
++  const onFail = useCallback(() => setFailed(true), []);
++
++  // If we leave 3D mode (e.g. reduced motion switched on), fade in again next time.
+   useEffect(() => {
+-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+-    setEnabled(!reduced && supportsWebGL());
+-  }, []);
++    if (!use3D) setReady(false);
++  }, [use3D]);
+ 
+   // Stop rendering when the hero scrolls out of view to save battery/GPU.
+   useEffect(() => {
+@@ -43,7 +59,7 @@ export default function HeroBackdrop() {
+     const io = new IntersectionObserver(([entry]) => setVisible(entry.isIntersecting));
+     io.observe(el);
+     return () => io.disconnect();
+-  }, [enabled]);
++  }, []);
+ 
+   return (
+     <div
+@@ -51,12 +67,20 @@ export default function HeroBackdrop() {
+       aria-hidden="true"
+       className="pointer-events-none absolute inset-y-0 right-0 w-full opacity-40 sm:opacity-70 lg:w-3/5 lg:opacity-100"
+     >
+-      {enabled && (
+-        <SceneBoundary>
+-          <Suspense fallback={null}>
+-            <Hero3D active={visible} />
+-          </Suspense>
+-        </SceneBoundary>
++      {use3D ? (
++        <div
++          className={`h-full w-full transition-opacity duration-1000 ease-out ${
++            ready ? "opacity-100" : "opacity-0"
++          }`}
++        >
++          <SceneBoundary onError={onFail}>
++            <Suspense fallback={null}>
++              <Hero3D active={visible} onReady={onReady} onFail={onFail} />
++            </Suspense>
++          </SceneBoundary>
++        </div>
++      ) : (
++        <HeroFallback />
+       )}
+     </div>
+   );
+diff --git a/src/components/HeroFallback.tsx b/src/components/HeroFallback.tsx
+new file mode 100644
+index 0000000..ac33d19
+--- /dev/null
++++ b/src/components/HeroFallback.tsx
+@@ -0,0 +1,85 @@
++import { useMemo } from "react";
++
++// Static stand-in for the 3D scene: used when WebGL is unavailable, the scene
++// fails, or the visitor prefers reduced motion. It is the same torus-knot point
++// cloud projected to 2D, generated from fixed math (no randomness), so it is
++// identical on every load and costs one SVG.
++
++const SIZE = 400;
++const T_SAMPLES = 130;
++const TUBE_POINTS = 4;
++const TILT = 0.9; // radians; tilts the knot so depth reads in 2D
++
++// Deterministic 0..1 hash, so the "scan noise" never changes between renders.
++function hash(n: number): number {
++  const s = Math.sin(n * 12.9898) * 43758.5453;
++  return s - Math.floor(s);
++}
++
++type Dot = { x: number; y: number; r: number; o: number; bright: boolean };
++
++function buildDots(): Dot[] {
++  const dots: Dot[] = [];
++  const scale = 38;
++  for (let i = 0; i < T_SAMPLES; i++) {
++    const t = (i / T_SAMPLES) * Math.PI * 2;
++    // (2,3) torus knot centreline.
++    const cx = (2 + Math.cos(3 * t)) * Math.cos(2 * t);
++    const cy = (2 + Math.cos(3 * t)) * Math.sin(2 * t);
++    const cz = Math.sin(3 * t);
++
++    for (let k = 0; k < TUBE_POINTS; k++) {
++      const seed = i * 7 + k;
++      const x = cx + (hash(seed) - 0.5) * 0.7;
++      const y = cy + (hash(seed + 101) - 0.5) * 0.7;
++      const z = cz + (hash(seed + 202) - 0.5) * 0.7;
++      // Rotate about X by TILT, then orthographic project.
++      const yr = y * Math.cos(TILT) - z * Math.sin(TILT);
++      const zr = y * Math.sin(TILT) + z * Math.cos(TILT);
++      const depth = (zr + 3) / 6; // roughly 0 (far) .. 1 (near)
++      dots.push({
++        x: SIZE / 2 + x * scale,
++        y: SIZE / 2 + yr * scale,
++        r: 0.9 + depth * 1.4,
++        o: 0.25 + depth * 0.6,
++        bright: hash(seed + 303) > 0.93,
++      });
++    }
++  }
++  return dots;
++}
++
++export default function HeroFallback() {
++  const dots = useMemo(buildDots, []);
++  const pad = 46;
++  const len = 44;
++  const lo = pad;
++  const hi = SIZE - pad;
++
++  return (
++    <svg
++      viewBox={`0 0 ${SIZE} ${SIZE}`}
++      className="h-full w-full"
++      preserveAspectRatio="xMidYMid meet"
++      focusable="false"
++    >
++      {dots.map((d, i) => (
++        <circle
++          key={i}
++          cx={d.x.toFixed(1)}
++          cy={d.y.toFixed(1)}
++          r={d.r.toFixed(2)}
++          fill={d.bright ? "#8AB0FF" : "#3E5FA3"}
++          opacity={d.o.toFixed(2)}
++        />
++      ))}
++      {/* Corner brackets: same motif as the 3D bounding box and the hero text frame. */}
++      <g stroke="#5B8DEF" strokeWidth="1.5" fill="none" opacity="0.8">
++        <path d={`M${lo} ${lo + len} V${lo} H${lo + len}`} />
++        <path d={`M${hi - len} ${lo} H${hi} V${lo + len}`} />
++        <path d={`M${lo} ${hi - len} V${hi} H${lo + len}`} />
++        <path d={`M${hi - len} ${hi} H${hi} V${hi - len}`} />
++      </g>
++    </svg>
++  );
++}
+diff --git a/src/lib/useReducedMotion.ts b/src/lib/useReducedMotion.ts
+new file mode 100644
+index 0000000..6558a74
+--- /dev/null
++++ b/src/lib/useReducedMotion.ts
+@@ -0,0 +1,20 @@
++import { useEffect, useState } from "react";
++
++const QUERY = "(prefers-reduced-motion: reduce)";
++
++/** Live `prefers-reduced-motion` value; updates if the user changes the OS setting. */
++export function useReducedMotion(): boolean {
++  const [reduced, setReduced] = useState<boolean>(
++    () => typeof window !== "undefined" && window.matchMedia(QUERY).matches,
++  );
++
++  useEffect(() => {
++    const mq = window.matchMedia(QUERY);
++    const sync = () => setReduced(mq.matches);
++    sync();
++    mq.addEventListener("change", sync);
++    return () => mq.removeEventListener("change", sync);
++  }, []);
++
++  return reduced;
++}
+-- 
+2.43.0
+
