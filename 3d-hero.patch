@@ -1,0 +1,344 @@
+diff --git a/package.json b/package.json
+index 36c388b..5860c56 100644
+--- a/package.json
++++ b/package.json
+@@ -9,12 +9,15 @@
+     "preview": "vite preview"
+   },
+   "dependencies": {
++    "@react-three/fiber": "^8.18.0",
+     "react": "^18.3.1",
+-    "react-dom": "^18.3.1"
++    "react-dom": "^18.3.1",
++    "three": "^0.169.0"
+   },
+   "devDependencies": {
+     "@types/react": "^18.3.5",
+     "@types/react-dom": "^18.3.0",
++    "@types/three": "^0.169.0",
+     "@vitejs/plugin-react": "^4.3.1",
+     "autoprefixer": "^10.4.20",
+     "postcss": "^8.4.45",
+diff --git a/src/components/Hero.tsx b/src/components/Hero.tsx
+index cc73850..a38ba32 100644
+--- a/src/components/Hero.tsx
++++ b/src/components/Hero.tsx
+@@ -1,4 +1,5 @@
+ import { profile } from "../data/profile";
++import HeroBackdrop from "./HeroBackdrop";
+ 
+ // Visual motif: corner brackets echo an object-detection bounding box —
+ // a deliberate nod to the CV subject matter (YOLO/DeepSORT work), not decoration.
+@@ -14,7 +15,8 @@ function Bracket({ className }: { className: string }) {
+ export default function Hero() {
+   return (
+     <section id="top" className="relative overflow-hidden px-6 pb-20 pt-16 sm:pt-24">
+-      <div className="mx-auto max-w-5xl">
++      <HeroBackdrop />
++      <div className="relative z-10 mx-auto max-w-5xl">
+         <div className="relative inline-block px-8 py-8 sm:px-14 sm:py-12">
+           <Bracket className="left-0 top-0 border-l-2 border-t-2" />
+           <Bracket className="right-0 top-0 border-r-2 border-t-2" />
+diff --git a/src/components/Hero3D.tsx b/src/components/Hero3D.tsx
+new file mode 100644
+index 0000000..4f57fe8
+--- /dev/null
++++ b/src/components/Hero3D.tsx
+@@ -0,0 +1,228 @@
++import { useEffect, useMemo, useRef } from "react";
++import { Canvas, useFrame } from "@react-three/fiber";
++import * as THREE from "three";
++
++// Visual idea: a LiDAR-style point cloud with a 3D bounding box and a scan
++// plane sweeping through it. It is the 3D version of the corner-bracket motif
++// in Hero.tsx (object-detection box), so the 3D reads as the CV subject matter
++// rather than decoration.
++
++// Raw sRGB floats for the shader (ShaderMaterial skips colour-space conversion).
++const BASE = new THREE.Vector3(0x3e / 255, 0x5f / 255, 0xa3 / 255); // signal-dim
++const BRIGHT = new THREE.Vector3(0x8a / 255, 0xb0 / 255, 0xff / 255); // signal-bright
++
++const VERTEX = /* glsl */ `
++  uniform float uTime;
++  uniform float uScan;
++  uniform float uPixelRatio;
++  attribute float aSeed;
++  varying float vGlow;
++  varying float vDepth;
++
++  void main() {
++    vec3 p = position;
++    p += 0.015 * vec3(
++      sin(uTime * 1.3 + aSeed * 40.0),
++      cos(uTime * 1.1 + aSeed * 31.0),
++      sin(uTime * 0.9 + aSeed * 23.0)
++    );
++    vec4 mv = modelViewMatrix * vec4(p, 1.0);
++    gl_Position = projectionMatrix * mv;
++
++    float d = abs(p.y - uScan);
++    vGlow = smoothstep(0.35, 0.0, d);
++    vGlow = clamp(vGlow + 0.12 * sin(uTime * 2.0 + aSeed * 50.0), 0.0, 1.0);
++    vDepth = clamp((-mv.z - 4.5) / 4.0, 0.0, 1.0);
++
++    float size = (2.2 + 3.0 * vGlow) * uPixelRatio;
++    gl_PointSize = size * (7.0 / -mv.z);
++  }
++`;
++
++const FRAGMENT = /* glsl */ `
++  uniform vec3 uBase;
++  uniform vec3 uBright;
++  varying float vGlow;
++  varying float vDepth;
++
++  void main() {
++    float r = length(gl_PointCoord - 0.5);
++    if (r > 0.5) discard;
++    float soft = smoothstep(0.5, 0.15, r);
++    vec3 col = mix(uBase, uBright, vGlow);
++    float alpha = soft * (0.95 - 0.5 * vDepth);
++    gl_FragColor = vec4(col, alpha);
++  }
++`;
++
++function buildPointCloud(density: number) {
++  const knot = new THREE.TorusKnotGeometry(1.05, 0.34, 360, 24);
++  const src = knot.getAttribute("position");
++  const count = Math.floor(src.count / density);
++  const positions = new Float32Array(count * 3);
++  const seeds = new Float32Array(count);
++
++  for (let i = 0; i < count; i++) {
++    const j = i * density;
++    // Small jitter so it reads as a scanned cloud, not a clean mesh.
++    positions[i * 3] = src.getX(j) + (Math.random() - 0.5) * 0.04;
++    positions[i * 3 + 1] = src.getY(j) + (Math.random() - 0.5) * 0.04;
++    positions[i * 3 + 2] = src.getZ(j) + (Math.random() - 0.5) * 0.04;
++    seeds[i] = Math.random();
++  }
++  knot.dispose();
++
++  const geometry = new THREE.BufferGeometry();
++  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
++  geometry.setAttribute("aSeed", new THREE.BufferAttribute(seeds, 1));
++  geometry.computeBoundingBox();
++
++  const material = new THREE.ShaderMaterial({
++    vertexShader: VERTEX,
++    fragmentShader: FRAGMENT,
++    transparent: true,
++    depthWrite: false,
++    uniforms: {
++      uTime: { value: 0 },
++      uScan: { value: 0 },
++      uPixelRatio: { value: 1 },
++      uBase: { value: BASE },
++      uBright: { value: BRIGHT },
++    },
++  });
++
++  return { geometry, material, box: geometry.boundingBox as THREE.Box3 };
++}
++
++// Eight corner brackets (3 short segments per corner) — same look as the 2D hero.
++function buildCornerBrackets(box: THREE.Box3, pad: number) {
++  const min = box.min.clone().subScalar(pad);
++  const max = box.max.clone().addScalar(pad);
++  const len = Math.min(max.x - min.x, max.y - min.y, max.z - min.z) * 0.22;
++  const pts: number[] = [];
++
++  for (const x of [min.x, max.x]) {
++    for (const y of [min.y, max.y]) {
++      for (const z of [min.z, max.z]) {
++        const sx = x === min.x ? 1 : -1;
++        const sy = y === min.y ? 1 : -1;
++        const sz = z === min.z ? 1 : -1;
++        pts.push(x, y, z, x + sx * len, y, z);
++        pts.push(x, y, z, x, y + sy * len, z);
++        pts.push(x, y, z, x, y, z + sz * len);
++      }
++    }
++  }
++
++  const geometry = new THREE.BufferGeometry();
++  geometry.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
++  const material = new THREE.LineBasicMaterial({
++    color: "#5B8DEF",
++    transparent: true,
++    opacity: 0.9,
++  });
++  return { object: new THREE.LineSegments(geometry, material), min, max };
++}
++
++// Rectangle outlining the box cross-section; slides up and down with the scan.
++function buildScanRing(min: THREE.Vector3, max: THREE.Vector3) {
++  const geometry = new THREE.BufferGeometry();
++  geometry.setAttribute(
++    "position",
++    new THREE.Float32BufferAttribute(
++      [min.x, 0, min.z, max.x, 0, min.z, max.x, 0, max.z, min.x, 0, max.z],
++      3,
++    ),
++  );
++  const material = new THREE.LineBasicMaterial({
++    color: "#8AB0FF",
++    transparent: true,
++    opacity: 0.6,
++  });
++  return new THREE.LineLoop(geometry, material);
++}
++
++type Pointer = { x: number; y: number };
++
++function Scene({ pointer }: { pointer: React.MutableRefObject<Pointer> }) {
++  const group = useRef<THREE.Group>(null);
++
++  const parts = useMemo(() => {
++    const isSmall = typeof window !== "undefined" && window.innerWidth < 640;
++    const cloud = buildPointCloud(isSmall ? 3 : 1);
++    const points = new THREE.Points(cloud.geometry, cloud.material);
++    const brackets = buildCornerBrackets(cloud.box, 0.18);
++    const ring = buildScanRing(brackets.min, brackets.max);
++    return { cloud, points, brackets, ring };
++  }, []);
++
++  useEffect(() => {
++    return () => {
++      parts.cloud.geometry.dispose();
++      parts.cloud.material.dispose();
++      parts.brackets.object.geometry.dispose();
++      (parts.brackets.object.material as THREE.Material).dispose();
++      parts.ring.geometry.dispose();
++      (parts.ring.material as THREE.Material).dispose();
++    };
++  }, [parts]);
++
++  useFrame((state, delta) => {
++    const g = group.current;
++    if (!g) return;
++    const t = state.clock.elapsedTime;
++    const { box } = parts.cloud;
++    const u = parts.cloud.material.uniforms;
++
++    // Scan sweeps bottom -> top, then restarts.
++    const phase = (t * 0.16) % 1;
++    const y = box.min.y + (box.max.y - box.min.y) * phase;
++    u.uTime.value = t;
++    u.uScan.value = y;
++    u.uPixelRatio.value = state.gl.getPixelRatio();
++    parts.ring.position.y = y;
++    (parts.ring.material as THREE.LineBasicMaterial).opacity =
++      0.7 * Math.sin(Math.PI * phase);
++
++    // Slow spin + cursor parallax + a little scroll-driven tilt (the "3D scroll" feel).
++    const scrollTilt = Math.min(window.scrollY / 900, 1) * 0.6;
++    const ease = 1 - Math.pow(0.001, delta);
++    const targetY = t * 0.22 + pointer.current.x * 0.5;
++    const targetX = -pointer.current.y * 0.35 + scrollTilt;
++    g.rotation.y += (targetY - g.rotation.y) * ease;
++    g.rotation.x += (targetX - g.rotation.x) * ease;
++  });
++
++  return (
++    <group ref={group}>
++      <primitive object={parts.points} />
++      <primitive object={parts.brackets.object} />
++      <primitive object={parts.ring} />
++    </group>
++  );
++}
++
++export default function Hero3D({ active }: { active: boolean }) {
++  const pointer = useRef<Pointer>({ x: 0, y: 0 });
++
++  useEffect(() => {
++    const onMove = (e: PointerEvent) => {
++      pointer.current.x = (e.clientX / window.innerWidth) * 2 - 1;
++      pointer.current.y = (e.clientY / window.innerHeight) * 2 - 1;
++    };
++    window.addEventListener("pointermove", onMove, { passive: true });
++    return () => window.removeEventListener("pointermove", onMove);
++  }, []);
++
++  return (
++    <Canvas
++      frameloop={active ? "always" : "never"}
++      dpr={[1, 1.75]}
++      camera={{ position: [0, 0, 6.5], fov: 40 }}
++      gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
++      style={{ background: "transparent" }}
++    >
++      <Scene pointer={pointer} />
++    </Canvas>
++  );
++}
+diff --git a/src/components/HeroBackdrop.tsx b/src/components/HeroBackdrop.tsx
+new file mode 100644
+index 0000000..3912b81
+--- /dev/null
++++ b/src/components/HeroBackdrop.tsx
+@@ -0,0 +1,63 @@
++import { Component, lazy, Suspense, useEffect, useRef, useState } from "react";
++import type { ReactNode } from "react";
++
++// three.js + react-three-fiber live in their own chunk, so the page text and
++// CTAs render immediately and the 3D layer fades in once it has loaded.
++const Hero3D = lazy(() => import("./Hero3D"));
++
++function supportsWebGL(): boolean {
++  try {
++    const canvas = document.createElement("canvas");
++    return !!(canvas.getContext("webgl2") || canvas.getContext("webgl"));
++  } catch {
++    return false;
++  }
++}
++
++// If WebGL context creation or the scene throws, the hero silently stays 2D.
++class SceneBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
++  state = { failed: false };
++  static getDerivedStateFromError() {
++    return { failed: true };
++  }
++  render() {
++    return this.state.failed ? null : this.props.children;
++  }
++}
++
++export default function HeroBackdrop() {
++  const ref = useRef<HTMLDivElement>(null);
++  const [enabled, setEnabled] = useState(false);
++  const [visible, setVisible] = useState(true);
++
++  // Respect reduced motion and devices without WebGL: no 3D layer at all.
++  useEffect(() => {
++    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
++    setEnabled(!reduced && supportsWebGL());
++  }, []);
++
++  // Stop rendering when the hero scrolls out of view to save battery/GPU.
++  useEffect(() => {
++    const el = ref.current;
++    if (!el || typeof IntersectionObserver === "undefined") return;
++    const io = new IntersectionObserver(([entry]) => setVisible(entry.isIntersecting));
++    io.observe(el);
++    return () => io.disconnect();
++  }, [enabled]);
++
++  return (
++    <div
++      ref={ref}
++      aria-hidden="true"
++      className="pointer-events-none absolute inset-y-0 right-0 w-full opacity-40 sm:opacity-70 lg:w-3/5 lg:opacity-100"
++    >
++      {enabled && (
++        <SceneBoundary>
++          <Suspense fallback={null}>
++            <Hero3D active={visible} />
++          </Suspense>
++        </SceneBoundary>
++      )}
++    </div>
++  );
++}
