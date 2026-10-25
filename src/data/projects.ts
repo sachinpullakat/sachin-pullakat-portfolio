@@ -118,8 +118,7 @@ export const projects: Project[] = [
       "Retention insights",
     ],
     github: "https://github.com/sachinpullakat/Churn-project",
-    demo:
-      "https://churn-project-ef77w3gddbylexigerchn.streamlit.app/",
+    demo: "https://churn-project-ef77w3gddbxyleixgerchn.streamlit.app/",
     featured: true,
   },
 ];
