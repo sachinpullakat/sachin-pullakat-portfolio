@@ -25,7 +25,7 @@ export default function ProjectCard({
 
   return (
     <article
-      className={`group rounded-xl border transition duration-300 ${
+      className={`group overflow-hidden rounded-xl border transition duration-300 ${
         isCompact ? "p-4" : "p-6"
       } ${
         isChurnProject
@@ -33,6 +33,25 @@ export default function ProjectCard({
           : "border-slate-800 bg-slate-900/40 hover:border-slate-700"
       }`}
     >
+      {isChurnProject && (
+        <div className="mb-6 overflow-hidden rounded-lg border border-slate-700/80 bg-slate-950">
+          <img
+            src="/images/projects/churniq-dashboard.png"
+            alt="ChurnIQ dashboard showing the threshold optimization lab, churn classification metrics, confusion matrix, and precision-recall curves"
+            loading="lazy"
+            className="block h-auto w-full object-contain"
+          />
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-800 px-3 py-2">
+            <span className="text-xs font-medium text-slate-400">
+              CHURNIQ · MODEL EVALUATION
+            </span>
+            <span className="text-xs text-cyan-300">
+              Interactive analytics dashboard
+            </span>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-wrap items-start justify-between gap-3">
         <h3
           className={`font-semibold leading-snug text-white ${
@@ -75,6 +94,11 @@ export default function ProjectCard({
           {project.resultConfidence === "ESTIMATE" && (
             <span className="ml-2 text-xs font-normal text-slate-500">
               (estimate)
+            </span>
+          )}
+          {project.resultConfidence === "VERIFIED" && (
+            <span className="ml-2 inline-flex rounded-full border border-emerald-400/20 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
+              VERIFIED
             </span>
           )}
         </p>

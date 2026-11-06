@@ -1,6 +1,7 @@
 
 import { useState } from "react";
 import { projects } from "../data/projects";
+import TechIcon from "./TechIcon";
 
 type ProjectStory = {
   category: string;
@@ -67,8 +68,7 @@ const projectStories: Record<string, ProjectStory> = {
       "Feature engineering",
       "Random Forest classification",
     ],
-    image:
-      "https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=1400&q=85",
+    image: "/images/projects/churniq-dashboard.png",
   },
 };
 
@@ -135,6 +135,7 @@ function ProjectVisual({
 
       <div className="absolute bottom-5 left-5 right-5 sm:bottom-7 sm:left-7 sm:right-7">
         <div className="mb-4 h-px w-9 bg-cyan-300/90 transition-all duration-300 group-hover/visual:w-16" />
+
         <h3 className="max-w-lg text-2xl font-semibold leading-tight tracking-tight text-white sm:text-3xl">
           {title}
         </h3>
@@ -144,7 +145,10 @@ function ProjectVisual({
 }
 
 export default function Projects() {
-  const [expandedProject, setExpandedProject] = useState<string | null>(null);
+  const [expandedProject, setExpandedProject] = useState<string | null>(
+    null
+  );
+  const [certificateOpen, setCertificateOpen] = useState(false);
 
   return (
     <section
@@ -244,12 +248,63 @@ export default function Projects() {
                       </div>
                     )}
 
+
+                    {project.slug === "wildlife-threat-detection" && (
+                      <div className="mt-6 overflow-hidden rounded-2xl border border-slate-300/20 bg-gradient-to-br from-slate-200/[0.10] via-white/[0.04] to-slate-400/[0.08] p-4 sm:p-5">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <div
+                            aria-hidden="true"
+                            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-slate-200/40 bg-gradient-to-br from-slate-100 via-slate-300 to-slate-500 text-2xl shadow-[0_0_24px_rgba(203,213,225,0.18)]"
+                          >
+                            🥈
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-200/65">
+                              Award-winning project
+                            </p>
+                            <p className="mt-1 text-base font-semibold text-white sm:text-lg">
+                              2nd Place — Project Exhibition 2026–27
+                            </p>
+                            <p className="mt-1 text-xs leading-5 text-white/55">
+                              K. S. Institute of Technology · 31 October 2026
+                            </p>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setCertificateOpen(true)}
+                          aria-label="View second-place award certificate"
+                          className="group/certificate mt-4 flex w-full items-center gap-3 rounded-xl border border-white/10 bg-black/20 p-2 text-left transition hover:border-slate-200/40 hover:bg-black/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+                        >
+                          <img
+                            src="/images/awards/wildlife-second-place-certificate.jpg"
+                            alt="Certificate of appreciation confirming second place for the Camouflage-Aware AI Wildlife Threat Detection project"
+                            loading="lazy"
+                            className="h-20 w-28 shrink-0 rounded-lg object-cover object-center transition duration-300 group-hover/certificate:scale-[1.02] sm:h-24 sm:w-36"
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-sm font-medium text-white">
+                              View award certificate
+                            </span>
+                            <span className="mt-1 block text-xs leading-5 text-white/50">
+                              Open the original certificate
+                            </span>
+                          </span>
+                          <span aria-hidden="true" className="pr-2 text-lg text-slate-200/70 transition group-hover/certificate:translate-x-1">
+                            ↗
+                          </span>
+                        </button>
+                      </div>
+                    )}
+
                     <div className="mt-5 flex flex-wrap gap-2">
                       {project.stack.slice(0, 6).map((technology) => (
                         <span
                           key={technology}
-                          className="rounded-full border border-white/[0.09] bg-white/[0.035] px-3 py-1.5 text-[11px] text-white/65"
+                          className="inline-flex items-center gap-2 rounded-full border border-white/[0.09] bg-white/[0.035] py-1 pl-1 pr-3 text-[11px] text-white/70 transition-colors hover:border-cyan-300/25 hover:text-white"
                         >
+                          <TechIcon name={technology} compact />
                           {technology}
                         </span>
                       ))}
@@ -285,7 +340,7 @@ export default function Projects() {
                         aria-expanded={expanded}
                         onClick={() =>
                           setExpandedProject(
-                            expanded ? null : project.slug,
+                            expanded ? null : project.slug
                           )
                         }
                         className="ml-auto inline-flex items-center gap-2 rounded-lg py-2 text-xs font-medium text-white/55 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
@@ -334,8 +389,9 @@ export default function Projects() {
                         {project.stack.map((technology) => (
                           <span
                             key={technology}
-                            className="rounded-lg border border-white/10 bg-white/[0.025] px-3 py-2 text-xs text-white/70"
+                            className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.025] py-1.5 pl-1.5 pr-3 text-xs text-white/70"
                           >
+                            <TechIcon name={technology} compact />
                             {technology}
                           </span>
                         ))}
@@ -356,6 +412,7 @@ export default function Projects() {
                                 <span className="font-mono text-xs text-cyan-400/80">
                                   {String(stepIndex + 1).padStart(2, "0")}
                                 </span>
+
                                 <span>{step}</span>
                               </li>
                             ))}
@@ -370,6 +427,29 @@ export default function Projects() {
           })}
         </div>
       </div>
+
+      {certificateOpen && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-4 backdrop-blur-md sm:p-8"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Second-place award certificate"
+        >
+          <button
+            type="button"
+            onClick={() => setCertificateOpen(false)}
+            aria-label="Close certificate"
+            className="absolute right-4 top-4 z-10 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+          >
+            Close ✕
+          </button>
+          <img
+            src="/images/awards/wildlife-second-place-certificate.jpg"
+            alt="Original KS Institute of Technology certificate of appreciation awarding second place to the Camouflage-Aware AI Wildlife Threat Detection project"
+            className="max-h-[88vh] max-w-full rounded-xl object-contain shadow-2xl"
+          />
+        </div>
+      )}
     </section>
   );
 }

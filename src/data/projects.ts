@@ -18,9 +18,9 @@ export const projects: Project[] = [
     slug: "wildlife-threat-detection",
     name: "Camouflage-Aware AI Wildlife Threat Detection",
     problem:
-      "Camouflaged animals near forest boundaries are difficult to detect with standard object detection, creating challenges for wildlife monitoring and human-wildlife conflict prevention.",
+      "Camouflaged animals can blend into forest backgrounds, making them difficult to detect with conventional object detection alone. Wildlife monitoring systems need to combine visual understanding, temporal tracking, movement analysis, and depth estimation to assess potential threats.",
     built:
-      "A real-time computer vision pipeline designed to segment camouflaged subjects, detect and track them across video frames, estimate distance, and flag potential threat-level events. Developed as a 7th-semester main project.",
+      "An end-to-end computer vision pipeline combining camouflage segmentation, object detection, multi-object tracking, movement analysis, and monocular depth estimation. The architecture connects these components to support threat-level flagging for wildlife monitoring and human-wildlife conflict prevention.",
     stack: [
       "U-Net",
       "YOLOv8",
@@ -32,12 +32,12 @@ export const projects: Project[] = [
     ],
     pipeline: [
       "Input video",
-      "Camouflage segmentation (U-Net)",
-      "YOLOv8 object detection",
-      "DeepSORT object tracking",
-      "Optical flow and movement analysis",
-      "ZoeDepth distance estimation",
-      "Threat-level event flagging",
+      "U-Net — camouflage-aware segmentation",
+      "YOLOv8 — object detection",
+      "DeepSORT — cross-frame object tracking",
+      "Optical flow — movement analysis",
+      "ZoeDepth — monocular depth estimation",
+      "Threat-level flagging",
     ],
     featured: true,
   },
