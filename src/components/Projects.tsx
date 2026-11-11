@@ -101,6 +101,47 @@ function ArrowIcon({ diagonal = false }: { diagonal?: boolean }) {
   );
 }
 
+function WorkflowPreview({ steps }: { steps: string[] }) {
+  const visibleSteps = steps.slice(0, 4);
+
+  return (
+    <div className="mt-6 rounded-2xl border border-cyan-300/[0.14] bg-[#0b1220]/75 p-4 sm:p-5">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-200/75">
+          How it works
+        </p>
+        <span className="font-mono text-[9px] tracking-wider text-white/30">
+          {String(steps.length).padStart(2, "0")} STAGES
+        </span>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        {visibleSteps.map((step, stepIndex) => (
+          <div key={`${stepIndex}-${step}`} className="flex items-center gap-2">
+            <div className="max-w-[190px] rounded-lg border border-white/[0.10] bg-white/[0.035] px-3 py-2">
+              <span className="mb-1 block font-mono text-[9px] text-cyan-300/70">
+                {String(stepIndex + 1).padStart(2, "0")}
+              </span>
+              <span className="block text-xs leading-5 text-white/80">{step}</span>
+            </div>
+            {stepIndex < visibleSteps.length - 1 && (
+              <span aria-hidden="true" className="text-cyan-300/50">→</span>
+            )}
+          </div>
+        ))}
+        {steps.length > visibleSteps.length && (
+          <span className="rounded-lg border border-dashed border-white/15 px-3 py-2 font-mono text-[10px] text-white/45">
+            +{steps.length - visibleSteps.length} stages
+          </span>
+        )}
+      </div>
+      <p className="mt-3 text-[11px] leading-5 text-white/40">
+        A simplified view of the project's processing flow. Open technical details for the full pipeline.
+      </p>
+    </div>
+  );
+}
+
 function ProjectVisual({
   image,
   title,
@@ -185,6 +226,19 @@ export default function Projects() {
 
             if (!story) return null;
 
+            const workflow = project.pipeline ??
+              (project.slug === "hiring-assessment-platform"
+                ? [
+                    "Organization setup",
+                    "JWT authentication & RBAC",
+                    "Question bank & versioning",
+                    "Assessment generation",
+                    "Candidate evaluation",
+                    "Manual review",
+                    "Analytics & PDF reporting",
+                  ]
+                : []);
+
             const expanded = expandedProject === project.slug;
 
             return (
@@ -227,6 +281,8 @@ export default function Projects() {
                         {story.solution}
                       </p>
                     </div>
+
+                    {workflow.length > 0 && <WorkflowPreview steps={workflow} />}
 
                     {project.result && (
                       <div className="mt-5 flex flex-wrap items-center gap-2">
@@ -397,14 +453,14 @@ export default function Projects() {
                         ))}
                       </div>
 
-                      {project.pipeline && project.pipeline.length > 0 && (
+                      {workflow.length > 0 && (
                         <div className="mt-6">
                           <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/40">
                             Workflow
                           </p>
 
                           <ol className="space-y-3">
-                            {project.pipeline.map((step, stepIndex) => (
+                            {workflow.map((step, stepIndex) => (
                               <li
                                 key={`${project.slug}-${step}`}
                                 className="flex items-start gap-3 text-sm leading-6 text-white/65"
