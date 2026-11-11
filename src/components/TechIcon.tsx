@@ -1,76 +1,75 @@
 
-import * as SimpleIcons from "simple-icons";
+import { useState } from "react";
 
 type TechIconProps = {
   name: string;
   compact?: boolean;
 };
 
-// Resolve the official Simple Icons export by its brand name.
-function getIcon(name: string) {
-  const normalized = name
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "");
+const iconSlugs: Record<string, string> = {
+  python: "python",
+  java: "java",
+  javascript: "javascript",
+  "c/c++": "cplusplus",
 
-  const aliases: Record<string, string> = {
-    javascript: "siJavascript",
-    cplusplus: "siCplusplus",
-    "c/c++": "siCplusplus",
-    scikitlearn: "siScikitlearn",
-    opencv: "siOpencv",
-    nodejs: "siNodedotjs",
-    express: "siExpress",
-    nextjs: "siNextdotjs",
-    nestjs: "siNestjs",
-    postgresql: "siPostgresql",
-    tailwindcss: "siTailwindcss",
-    pytorch: "siPytorch",
-    numpy: "siNumpy",
-    pandas: "siPandas",
-    matplotlib: "siMatplotlib",
-    typescript: "siTypescript",
-    react: "siReact",
-    python: "siPython",
-    java: "siJava",
-    git: "siGit",
-    github: "siGithub",
-    streamlit: "siStreamlit",
-    prisma: "siPrisma",
-    vite: "siVite",
-    jupyter: "siJupyter",
-  };
+  pytorch: "pytorch",
+  "scikit-learn": "scikitlearn",
+  pandas: "pandas",
+  numpy: "numpy",
 
-  const exportName =
-    aliases[normalized] ??
-    `si${normalized.charAt(0).toUpperCase()}${normalized.slice(1)}`;
+  opencv: "opencv",
 
-  return (SimpleIcons as Record<string, any>)[exportName];
+  "node.js": "nodedotjs",
+  express: "express",
+  "next.js": "nextdotjs",
+  nestjs: "nestjs",
+
+  postgresql: "postgresql",
+  prisma: "prisma",
+
+  git: "git",
+  github: "github",
+  jupyter: "jupyter",
+  "google colab": "googlecolab",
+  "claude api": "claude",
+};
+
+function getIconSlug(name: string) {
+  return iconSlugs[name.toLowerCase().trim()];
 }
 
-export function TechIcon({ name, compact = false }: TechIconProps) {
-  const icon = getIcon(name);
+export function TechIcon({
+  name,
+  compact = false,
+}: TechIconProps) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const slug = getIconSlug(name);
+
+  const size = compact ? "h-8 w-8 p-1.5" : "h-14 w-14 p-3";
 
   return (
     <div
       title={name}
       aria-label={name}
       role="img"
-      className={`flex shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white ${
-        compact ? "h-8 w-8 p-1.5" : "h-14 w-14 p-3"
-      }`}
+      className={`flex shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white ${size}`}
     >
-      {icon ? (
-        <svg
-          viewBox="0 0 24 24"
-          className="h-full w-full"
-          fill={`#${icon.hex}`}
+      {slug && !imageFailed ? (
+        <img
+          src={`https://cdn.simpleicons.org/${slug}`}
+          alt=""
           aria-hidden="true"
-        >
-          <path d={icon.path} />
-        </svg>
+          loading="lazy"
+          decoding="async"
+          onError={() => setImageFailed(true)}
+          className="h-full w-full object-contain"
+        />
       ) : (
-        <span className="text-xs font-bold text-slate-800">
-          {name.slice(0, 2).toUpperCase()}
+        <span className="text-xs font-bold tracking-tight text-slate-800">
+          {name
+            .replace(/[^a-zA-Z0-9]/g, "")
+            .slice(0, 2)
+            .toUpperCase()}
         </span>
       )}
     </div>
