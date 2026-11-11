@@ -39,6 +39,8 @@ export const projects: Project[] = [
       "ZoeDepth — monocular depth estimation",
       "Threat-level flagging",
     ],
+    github:
+      "https://github.com/sachinpullakat/camouflage-aware-wildlife-detection",
     featured: true,
   },
 
